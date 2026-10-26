@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { collectJeemainNotifications } from "../in/jeemain/index.js";
+import { collectJeemainNotifications } from "./in/jeemain/index.js";
 import { insertNewNotifications, getStoredNotifications } from "./db.js";
 
 export const app = Fastify({ logger: true });
