@@ -1,6 +1,6 @@
 import { app, runJeemainNotificationCron } from "./app.js";
 
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT) || 3000;
 const cronTimer = setInterval(() => {
   runJeemainNotificationCron().catch((error: unknown) => {
     app.log.error({ err: error }, "JEE Main notification cron failed");

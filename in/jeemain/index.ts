@@ -42,16 +42,35 @@ export function parseJeemainNotifications(html: string): JeemainNotification[] {
     throw new Error("JEE Main returned a blocked or access-denied page");
   }
 
-  const panelStart = html.search(
-    /<[^>]+\b(?:id=["']public-notices-content["']|aria-labelledby=["']public-notices-heading["'])[^>]*>/i,
+  let panelHtml = "";
+  // 1. Try legacy ID or aria-labelledby
+  const legacyMatch = html.match(
+    /<[^>]+\b(?:id=["']public-notices-content["']|aria-labelledby=["']public-notices-heading["'])[^>]*>[\s\S]*?<\/div>/i,
   );
-  if (panelStart === -1) {
+  if (legacyMatch) {
+    panelHtml = legacyMatch[0];
+  } else {
+    // 2. Try WPBakery / S3WaaS tab panel containing "Public Notices"
+    const ttaMatch = html.match(
+      /<div[^>]*class="[^"]*vc_tta-panel[^"]*"[^>]*>[\s\S]*?Public Notices[\s\S]*?<div[^>]*class="[^"]*vc_tta-panel-body[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i,
+    );
+    if (ttaMatch) {
+      panelHtml = ttaMatch[1];
+    } else {
+      // 3. Fallback: find any container after "Public Notices" heading
+      const headingMatch = html.match(/(?:Public Notices)[\s\S]*?<ul\b[^>]*>([\s\S]*?)<\/ul>/i);
+      if (headingMatch) {
+        panelHtml = headingMatch[0];
+      }
+    }
+  }
+
+  if (!panelHtml) {
     throw new Error(
       "JEE Main public notices panel was not found; the homepage markup may have changed",
     );
   }
 
-  const panelHtml = html.slice(panelStart);
   const list = panelHtml.match(/<ul\b[^>]*>([\s\S]*?)<\/ul>/i)?.[1];
   if (!list) {
     throw new Error("JEE Main public notices list was not found");
@@ -88,7 +107,11 @@ export function parseJeemainNotifications(html: string): JeemainNotification[] {
 
 export async function collectJeemainNotifications(): Promise<JeemainNotification[]> {
   const response = await fetch(JEEMAIN_URL, {
-    headers: { accept: "text/html" },
+    headers: {
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
