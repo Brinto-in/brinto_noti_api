@@ -51,37 +51,65 @@ export async function initDb(): Promise<void> {
   );
 }
 
-export async function upsertNotifications(
+/**
+ * Inserts only brand new notifications.
+ * If a notification with the same URL already exists in the database, it is completely skipped.
+ */
+export async function insertNewNotifications(
   exam: string,
   items: { title: string; url: string }[],
-): Promise<{ count: number; affectedRows: number }> {
+): Promise<{ total: number; newlyInserted: number; skippedExisting: number }> {
   if (!items.length) {
-    return { count: 0, affectedRows: 0 };
+    return { total: 0, newlyInserted: 0, skippedExisting: 0 };
   }
 
   const client = getDbClient();
-  const statements = items.map((item) => ({
+
+  // Find which of these URLs already exist in the database
+  const placeholders = items.map(() => "?").join(", ");
+  const urls = items.map((i) => i.url);
+  const existing = await client.execute({
+    sql: `SELECT url FROM notifications WHERE url IN (${placeholders});`,
+    args: urls,
+  });
+
+  const existingUrls = new Set(existing.rows.map((r) => String(r.url)));
+  const newItems = items.filter((item) => !existingUrls.has(item.url));
+
+  // If every notification already exists, skip inserting completely
+  if (newItems.length === 0) {
+    return {
+      total: items.length,
+      newlyInserted: 0,
+      skippedExisting: items.length,
+    };
+  }
+
+  // Insert only unseen notifications with ON CONFLICT DO NOTHING
+  const statements = newItems.map((item) => ({
     sql: `
-      INSERT INTO notifications (exam, title, url, updated_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(url) DO UPDATE SET
-        title = excluded.title,
-        updated_at = CURRENT_TIMESTAMP;
+      INSERT INTO notifications (exam, title, url)
+      VALUES (?, ?, ?)
+      ON CONFLICT(url) DO NOTHING;
     `,
     args: [exam, item.title, item.url],
   }));
 
   const results = await client.batch(statements, "write");
-  const affectedRows = results.reduce(
+  const newlyInserted = results.reduce(
     (acc, res) => acc + (res.rowsAffected ?? 0),
     0,
   );
 
   return {
-    count: items.length,
-    affectedRows,
+    total: items.length,
+    newlyInserted,
+    skippedExisting: items.length - newlyInserted,
   };
 }
+
+// Backward-compatible alias
+export const upsertNotifications = insertNewNotifications;
 
 export async function getStoredNotifications(
   exam?: string,

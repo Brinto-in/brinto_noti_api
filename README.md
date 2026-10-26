@@ -5,7 +5,7 @@ A Fastify + TypeScript notification collector connected to a Turso (LibSQL) data
 ## Features
 
 - **JEE Main Scraper**: Fetches latest Public Notices from the official JEE Main website.
-- **Turso Database Persistence**: Saves and deduplicates notifications using atomic LibSQL upserts.
+- **Turso Database Persistence**: Saves new notifications and automatically skips insertion if an entry with the same URL is already present.
 - **Scheduled Cron**: Checks and syncs notifications periodically.
 - **REST Endpoints**:
   - `GET /` — Health status and available endpoints.

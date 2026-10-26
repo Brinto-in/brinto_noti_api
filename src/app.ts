@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { collectJeemainNotifications } from "../in/jeemain/index.js";
-import { upsertNotifications, getStoredNotifications } from "./db.js";
+import { insertNewNotifications, getStoredNotifications } from "./db.js";
 
 export const app = Fastify({ logger: true });
 
@@ -17,11 +17,11 @@ export async function runJeemainNotificationCron() {
   const triggeredAt = new Date().toISOString();
   const notifications = await collectJeemainNotifications();
 
-  let dbResult = { count: 0, affectedRows: 0 };
+  let dbResult = { total: 0, newlyInserted: 0, skippedExisting: 0 };
   try {
-    dbResult = await upsertNotifications("jeemain", notifications);
+    dbResult = await insertNewNotifications("jeemain", notifications);
   } catch (err) {
-    app.log.error({ err }, "Failed to update notifications in Turso database");
+    app.log.error({ err }, "Failed to process notifications in Turso database");
     throw err;
   }
 
@@ -29,10 +29,13 @@ export async function runJeemainNotificationCron() {
     {
       triggeredAt,
       notificationCount: notifications.length,
-      dbUpdated: dbResult,
+      newlyInserted: dbResult.newlyInserted,
+      skippedExisting: dbResult.skippedExisting,
       notifications,
     },
-    "JEE Main notifications collected and saved to Turso DB",
+    dbResult.newlyInserted > 0
+      ? `JEE Main: ${dbResult.newlyInserted} new notification(s) inserted into Turso DB`
+      : `JEE Main: all ${dbResult.total} notification(s) already exist in DB; skipped insert`,
   );
 
   return { ok: true, triggeredAt, notifications, db: dbResult };
